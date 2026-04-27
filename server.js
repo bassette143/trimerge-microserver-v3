@@ -1,6 +1,7 @@
 const dotenv = require("dotenv");
 
 dotenv.config();
+
 const app = require("./app");
 const run = require("./mdb");
 
@@ -12,4 +13,9 @@ process.on("unhandledRejection", (reason) => {
   console.error("🔥 UNHANDLED PROMISE REJECTION:", reason);
 });
 
-module.exports = { app, run };
+// CommonJS export
+// app is the default export
+module.exports = app;
+
+// run remains available by name
+module.exports.run = run;

@@ -3,8 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 const app = require("./app");
 const run = require("./mdb");
-const { PORT, OLLAMA_URL, ROUTER_MODEL, OLLAMA_MODEL } = require("./config");
-const { getTodayDate } = require("./helpers/dateHelpers");
+const PORT = process.env.PORT || 3000;
 
 process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err);
@@ -18,8 +17,5 @@ app.listen(PORT, () => {
 
   run().catch(console.dir);
   console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`✅ OLLAMA_URL: ${OLLAMA_URL}`);
-  console.log(`✅ ROUTER_MODEL: ${ROUTER_MODEL}`);
-  console.log(`✅ OLLAMA_MODEL: ${OLLAMA_MODEL}`);
-  console.log(`✅ Local today: ${getTodayDate()}`);
+  
 });

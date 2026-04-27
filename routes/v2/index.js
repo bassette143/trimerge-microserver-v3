@@ -1,201 +1,176 @@
 const express = require("express");
 const router = express.Router();
 
-// ✅ FIXED PATH
-const db = require("../../db");
+const connectMongo = require("../../mdb");
 
 // =========================
 // TEST ROUTE
 // =========================
 router.get("/test", (req, res) => {
-  res.json({ message: "v2 routes working" });
+  res.json({ message: "v2 routes working with MongoDB" });
 });
 
 // =========================
 // NEW CONVERSATION
 // =========================
-router.post("/new_conversation", (req, res) => {
-  const { title, memory, profile, project, recent_message } = req.body;
+router.post("/new_conversation", async (req, res) => {
+  try {
+    const { title, memory, profile, project, recent_message } = req.body;
 
-  if (!title || !profile) {
-    return res.status(400).json({ error: "title and profile required" });
-  }
-
-  const sql = `
-    INSERT INTO v2_conversations (title, memory, profile, project, recent_message)
-    VALUES (?, ?, ?, ?, ?)
-  `;
-
-  db.run(
-    sql,
-    [
-      title,
-      memory ? JSON.stringify(memory) : null,
-      profile,
-      project || null,
-      recent_message || null
-    ],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-
-      res.status(201).json({
-        id: this.lastID,
-        title,
-        memory: memory || null,
-        profile,
-        project: project || null,
-        recent_message: recent_message || null
-      });
+    if (!title || !profile) {
+      return res.status(400).json({ error: "title and profile required" });
     }
-  );
+
+    const db = await connectMongo();
+    const conversations = db.collection("v2_conversations");
+
+    const newConversation = {
+      title,
+      memory: memory || null,
+      profile,
+      project: project || null,
+      recent_message: recent_message || null,
+      created_at: new Date()
+    };
+
+    const result = await conversations.insertOne(newConversation);
+
+    res.status(201).json({
+      id: result.insertedId,
+      ...newConversation
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =========================
 // NEW MESSAGE
 // =========================
-router.post("/new_message", (req, res) => {
-  const { conversation, tool, text, attachment } = req.body;
+router.post("/new_message", async (req, res) => {
+  try {
+    const { conversation, tool, text, attachment } = req.body;
 
-  if (!conversation || !text) {
-    return res.status(400).json({ error: "conversation and text required" });
-  }
-
-  const sql = `
-    INSERT INTO v2_messages (conversation_id, tool, text, attachment)
-    VALUES (?, ?, ?, ?)
-  `;
-
-  db.run(
-    sql,
-    [
-      conversation,
-      tool || null,
-      text,
-      attachment ? JSON.stringify(attachment) : null
-    ],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-
-      res.status(201).json({
-        id: this.lastID,
-        conversation,
-        tool: tool || null,
-        text,
-        attachment: attachment || []
-      });
+    if (!conversation || !text) {
+      return res.status(400).json({ error: "conversation and text required" });
     }
-  );
+
+    const db = await connectMongo();
+    const messages = db.collection("v2_messages");
+
+    const newMessage = {
+      conversation,
+      tool: tool || null,
+      text,
+      attachment: attachment || [],
+      created_at: new Date()
+    };
+
+    const result = await messages.insertOne(newMessage);
+
+    res.status(201).json({
+      id: result.insertedId,
+      ...newMessage
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =========================
 // GET MESSAGES
 // =========================
-router.post("/messages", (req, res) => {
-  const { conversation, page = 1, limit = 25 } = req.body;
+router.post("/messages", async (req, res) => {
+  try {
+    const { conversation, page = 1, limit = 25 } = req.body;
 
-  if (!conversation) {
-    return res.status(400).json({ error: "conversation required" });
-  }
-
-  const safePage = Number(page) > 0 ? Number(page) : 1;
-  const safeLimit = Number(limit) > 0 ? Number(limit) : 25;
-  const offset = (safePage - 1) * safeLimit;
-
-  const sql = `
-    SELECT id, conversation_id, tool, text, attachment, created_at
-    FROM v2_messages
-    WHERE conversation_id = ?
-    ORDER BY created_at ASC, id ASC
-    LIMIT ? OFFSET ?
-  `;
-
-  db.all(sql, [conversation, safeLimit, offset], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
+    if (!conversation) {
+      return res.status(400).json({ error: "conversation required" });
     }
 
-    const parsedRows = rows.map((row) => ({
-      id: row.id,
-      conversation: row.conversation_id,
-      tool: row.tool,
-      text: row.text,
-      attachment: row.attachment ? JSON.parse(row.attachment) : [],
-      created_at: row.created_at
-    }));
+    const safePage = Number(page) > 0 ? Number(page) : 1;
+    const safeLimit = Number(limit) > 0 ? Number(limit) : 25;
+    const offset = (safePage - 1) * safeLimit;
+
+    const db = await connectMongo();
+    const messages = db.collection("v2_messages");
+
+    const rows = await messages
+      .find({ conversation })
+      .sort({ created_at: 1 })
+      .skip(offset)
+      .limit(safeLimit)
+      .toArray();
 
     res.json({
       conversation,
       page: safePage,
       limit: safeLimit,
-      messages: parsedRows
+      messages: rows.map((row) => ({
+        id: row._id,
+        conversation: row.conversation,
+        tool: row.tool,
+        text: row.text,
+        attachment: row.attachment || [],
+        created_at: row.created_at
+      }))
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =========================
 // GET CONVERSATIONS
 // =========================
-router.post("/conversations", (req, res) => {
-  const { profile, project, page = 1, limit = 25 } = req.body;
+router.post("/conversations", async (req, res) => {
+  try {
+    const { profile, project, page = 1, limit = 25 } = req.body;
 
-  if (!profile) {
-    return res.status(400).json({ error: "profile required" });
-  }
-
-  const safePage = Number(page) > 0 ? Number(page) : 1;
-  const safeLimit = Number(limit) > 0 ? Number(limit) : 25;
-  const offset = (safePage - 1) * safeLimit;
-
-  let sql = `
-    SELECT id, title, memory, profile, project, recent_message, created_at
-    FROM v2_conversations
-    WHERE profile = ?
-  `;
-
-  const params = [profile];
-
-  // ✅ Lead requirement logic
-  if (project !== undefined && project !== null && project !== "") {
-    sql += ` AND project = ? `;
-    params.push(project);
-  } else {
-    sql += ` AND project IS NULL `;
-  }
-
-  sql += `
-    ORDER BY created_at DESC, id DESC
-    LIMIT ? OFFSET ?
-  `;
-
-  params.push(safeLimit, offset);
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
+    if (!profile) {
+      return res.status(400).json({ error: "profile required" });
     }
 
-    const parsedRows = rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      memory: row.memory ? JSON.parse(row.memory) : null,
-      profile: row.profile,
-      project: row.project,
-      recent_message: row.recent_message,
-      created_at: row.created_at
-    }));
+    const safePage = Number(page) > 0 ? Number(page) : 1;
+    const safeLimit = Number(limit) > 0 ? Number(limit) : 25;
+    const offset = (safePage - 1) * safeLimit;
+
+    const db = await connectMongo();
+    const conversations = db.collection("v2_conversations");
+
+    const query = { profile };
+
+    if (project !== undefined && project !== null && project !== "") {
+      query.project = project;
+    } else {
+      query.project = null;
+    }
+
+    const rows = await conversations
+      .find(query)
+      .sort({ created_at: -1 })
+      .skip(offset)
+      .limit(safeLimit)
+      .toArray();
 
     res.json({
       profile,
       project: project || null,
       page: safePage,
       limit: safeLimit,
-      conversations: parsedRows
+      conversations: rows.map((row) => ({
+        id: row._id,
+        title: row.title,
+        memory: row.memory || null,
+        profile: row.profile,
+        project: row.project,
+        recent_message: row.recent_message,
+        created_at: row.created_at
+      }))
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

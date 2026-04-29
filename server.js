@@ -13,6 +13,9 @@ process.on("unhandledRejection", (reason) => {
   console.error("🔥 UNHANDLED PROMISE REJECTION:", reason);
 });
 
+// Start Mongo connection for Vercel/serverless
+run().catch(console.error);
+
 // CommonJS export
 // app is the default export
 module.exports = app;

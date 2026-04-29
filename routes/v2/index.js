@@ -30,7 +30,9 @@ router.post("/new_conversation", async (req, res) => {
       profile,
       project: project || null,
       recent_message: recent_message || null,
-      created_at: new Date()
+      created_at: new Date(),
+      _id:crypto.randomUUID()
+  
     };
 
     const result = await conversations.insertOne(newConversation);
@@ -63,7 +65,8 @@ router.post("/new_message", async (req, res) => {
       tool: tool || null,
       text,
       attachment: attachment || [],
-      created_at: new Date()
+      created_at: new Date(),
+      _id:crypto.randomUUID()
     };
 
     const result = await messages.insertOne(newMessage);

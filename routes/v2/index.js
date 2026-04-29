@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const router = express.Router();
 
 const connectMongo = require("../../mdb");
@@ -25,20 +26,25 @@ router.post("/new_conversation", async (req, res) => {
     const conversations = db.collection("v2_conversations");
 
     const newConversation = {
+      _id: crypto.randomUUID(),
       title,
       memory: memory || null,
       profile,
       project: project || null,
       recent_message: recent_message || null,
+      pinned: false,
+      archived: false,
+      deleted: false,
+      share_id: null,
+      share_url: null,
       created_at: new Date(),
-      _id:crypto.randomUUID()
-  
+      updated_at: new Date()
     };
 
-    const result = await conversations.insertOne(newConversation);
+    await conversations.insertOne(newConversation);
 
     res.status(201).json({
-      id: result.insertedId,
+      id: newConversation._id,
       ...newConversation
     });
   } catch (err) {
@@ -61,18 +67,29 @@ router.post("/new_message", async (req, res) => {
     const messages = db.collection("v2_messages");
 
     const newMessage = {
+      _id: crypto.randomUUID(),
       conversation,
       tool: tool || null,
       text,
       attachment: attachment || [],
-      created_at: new Date(),
-      _id:crypto.randomUUID()
+      created_at: new Date()
     };
 
-    const result = await messages.insertOne(newMessage);
+    await messages.insertOne(newMessage);
+
+    // update recent message on conversation
+    await db.collection("v2_conversations").updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          recent_message: text,
+          updated_at: new Date()
+        }
+      }
+    );
 
     res.status(201).json({
-      id: result.insertedId,
+      id: newMessage._id,
       ...newMessage
     });
   } catch (err) {
@@ -128,7 +145,13 @@ router.post("/messages", async (req, res) => {
 // =========================
 router.post("/conversations", async (req, res) => {
   try {
-    const { profile, project, page = 1, limit = 25 } = req.body;
+    const {
+      profile,
+      project,
+      page = 1,
+      limit = 25,
+      include_archived = false
+    } = req.body;
 
     if (!profile) {
       return res.status(400).json({ error: "profile required" });
@@ -141,7 +164,14 @@ router.post("/conversations", async (req, res) => {
     const db = await connectMongo();
     const conversations = db.collection("v2_conversations");
 
-    const query = { profile };
+    const query = {
+      profile,
+      deleted: { $ne: true }
+    };
+
+    if (!include_archived) {
+      query.archived = { $ne: true };
+    }
 
     if (project !== undefined && project !== null && project !== "") {
       query.project = project;
@@ -151,7 +181,7 @@ router.post("/conversations", async (req, res) => {
 
     const rows = await conversations
       .find(query)
-      .sort({ created_at: -1 })
+      .sort({ pinned: -1, updated_at: -1, created_at: -1 })
       .skip(offset)
       .limit(safeLimit)
       .toArray();
@@ -168,8 +198,208 @@ router.post("/conversations", async (req, res) => {
         profile: row.profile,
         project: row.project,
         recent_message: row.recent_message,
-        created_at: row.created_at
+        pinned: row.pinned || false,
+        archived: row.archived || false,
+        deleted: row.deleted || false,
+        share_id: row.share_id || null,
+        share_url: row.share_url || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at
       }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================
+// SHARE LINK
+// =========================
+router.post("/share_link", async (req, res) => {
+  try {
+    const { conversation, base_url } = req.body;
+
+    if (!conversation) {
+      return res.status(400).json({ error: "conversation required" });
+    }
+
+    const db = await connectMongo();
+    const conversations = db.collection("v2_conversations");
+
+    const share_id = crypto.randomUUID();
+    const share_url = `${base_url || "http://localhost:3000"}/share/${share_id}`;
+
+    await conversations.updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          share_id,
+          share_url,
+          updated_at: new Date()
+        }
+      }
+    );
+
+    res.json({
+      conversation,
+      share_id,
+      share_url
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================
+// RENAME PROJECT
+// =========================
+router.post("/rename_project", async (req, res) => {
+  try {
+    const { conversation, title } = req.body;
+
+    if (!conversation || !title) {
+      return res.status(400).json({
+        error: "conversation and title required"
+      });
+    }
+
+    const db = await connectMongo();
+
+    await db.collection("v2_conversations").updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          title,
+          updated_at: new Date()
+        }
+      }
+    );
+
+    res.json({
+      conversation,
+      title,
+      renamed: true
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================
+// ARCHIVE CONVERSATION
+// =========================
+router.post("/archive_conversation", async (req, res) => {
+  try {
+    const { conversation, archived = true } = req.body;
+
+    if (!conversation) {
+      return res.status(400).json({
+        error: "conversation required"
+      });
+    }
+
+    const db = await connectMongo();
+
+    await db.collection("v2_conversations").updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          archived: Boolean(archived),
+          updated_at: new Date()
+        }
+      }
+    );
+
+    res.json({
+      conversation,
+      archived: Boolean(archived)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================
+// PIN CHAT
+// =========================
+router.post("/pin_chat", async (req, res) => {
+  try {
+    const { conversation, pinned = true } = req.body;
+
+    if (!conversation) {
+      return res.status(400).json({
+        error: "conversation required"
+      });
+    }
+
+    const db = await connectMongo();
+
+    await db.collection("v2_conversations").updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          pinned: Boolean(pinned),
+          updated_at: new Date()
+        }
+      }
+    );
+
+    res.json({
+      conversation,
+      pinned: Boolean(pinned)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================
+// DELETE CONVERSATION
+// =========================
+router.post("/delete_conversation", async (req, res) => {
+  try {
+    const { conversation, hard_delete = false } = req.body;
+
+    if (!conversation) {
+      return res.status(400).json({
+        error: "conversation required"
+      });
+    }
+
+    const db = await connectMongo();
+
+    if (hard_delete) {
+      await db.collection("v2_messages").deleteMany({
+        conversation
+      });
+
+      await db.collection("v2_conversations").deleteOne({
+        _id: conversation
+      });
+
+      return res.json({
+        conversation,
+        deleted: true,
+        hard_delete: true
+      });
+    }
+
+    await db.collection("v2_conversations").updateOne(
+      { _id: conversation },
+      {
+        $set: {
+          deleted: true,
+          archived: true,
+          deleted_at: new Date(),
+          updated_at: new Date()
+        }
+      }
+    );
+
+    res.json({
+      conversation,
+      deleted: true,
+      hard_delete: false
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

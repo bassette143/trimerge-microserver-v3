@@ -4,6 +4,10 @@ const router = express.Router();
 
 const connectMongo = require("../../mdb");
 
+// ✅ ADD CHAT ROUTES
+const chatRoutes = require("./chatRoutes");
+router.use("/", chatRoutes);
+
 // =========================
 // TEST ROUTE
 // =========================
@@ -77,7 +81,6 @@ router.post("/new_message", async (req, res) => {
 
     await messages.insertOne(newMessage);
 
-    // update recent message on conversation
     await db.collection("v2_conversations").updateOne(
       { _id: conversation },
       {
@@ -251,9 +254,9 @@ router.post("/share_link", async (req, res) => {
 });
 
 // =========================
-// RENAME PROJECT
+// RENAME CONVERSATION
 // =========================
-router.post("/rename_project", async (req, res) => {
+router.post("/rename_conversation", async (req, res) => {
   try {
     const { conversation, title } = req.body;
 

@@ -1,103 +1,79 @@
-const crypto = require("crypto");
 const axios = require("axios");
 
 const { selectSkill } = require("./llmSkillSelector");
 const connectMongo = require("../mdb");
 
-const chat = async (prompt, user, options = { skill: "default" }) => {
+const API_BASE_URL = process.env.API_BASE_URL || "https://trimerge-iq.onrender.com";
+const SKILLS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+const chat = async (prompt, user, options = {}) => {
   try {
     const db = await connectMongo();
-
-    const selectedSkill = options?.skill || "default";
-
-    // =========================
-    // 1. CREATE CACHE KEY
-    // =========================
-    const cacheKey = crypto
-      .createHash("sha256")
-      .update(`${user}:${selectedSkill}:${prompt}`)
-      .digest("hex");
+    let skillDecision = options.skill;
+    // Use skills passed from Postman first
+    let skills = null;
+    let skillsSource = "provided_in_request";
 
     // =========================
-    // 2. CHECK CACHE
+    // STEP 1: GET SKILLS
     // =========================
-    const cached = await db.collection("chat_cache").findOne({
-      cacheKey,
-      expiresAt: { $gt: new Date() }
-    });
-
-    if (cached) {
-      return {
-        fromCache: true,
-        skill: cached.skill,
-        method: cached.method,
-        endpoint: cached.endpoint,
-        response: cached.response
-      };
-    }
-
-    // =========================
-    // 3. SELECT SKILL WITH LLM
-    // =========================
-    const skillDecision = await selectSkill(prompt, user, options);
-
-    if (!skillDecision || !skillDecision.endpoint || !skillDecision.method) {
-      return {
-        error: true,
-        message: "Invalid skill decision.",
-        skillDecision
-      };
-    }
-
-    // =========================
-    // 4. CALL SKILL ENDPOINT
-    // Supports GET and POST
-    // =========================
-    let skillResult;
-
-    if (skillDecision.method === "GET") {
-      skillResult = await axios.get(skillDecision.endpoint, {
-        timeout: 10000
+    if (!skillDecision) {
+      const cachedSkills = await db.collection("skills_cache").findOne({
+        cacheKey: "all_skills",
+        expiresAt: { $gt: new Date() }
       });
-    } else if (skillDecision.method === "POST") {
-      skillResult = await axios.post(
-        skillDecision.endpoint,
-        skillDecision.payload || {},
-        { timeout: 10000 }
-      );
-    } else {
+
+      if (cachedSkills) {
+        skills = cachedSkills.skills;
+        skillsSource = "mongo_cache";
+      } else {
+        const skillsResponse = await axios.get(`${API_BASE_URL}/skills`, {
+          timeout: 30000
+        });
+
+        skills = skillsResponse.data;
+        skillsSource = "backend_api";
+
+        await db.collection("skills_cache").updateOne(
+          { cacheKey: "all_skills" },
+          {
+            $set: {
+              cacheKey: "all_skills",
+              skills,
+              createdAt: new Date(),
+              expiresAt: new Date(Date.now() + SKILLS_CACHE_TTL)
+            }
+          },
+          { upsert: true }
+        );
+      }
+
+       skillDecision = await selectSkill(prompt, user, skills, options);
+    }
+
+    // =========================
+    // STEP 2: ASK LLM TO SELECT SKILL
+    // =========================
+     
+
+    if (!skillDecision || !skillDecision.skill) {
       return {
         error: true,
-        message: `Unsupported HTTP method: ${skillDecision.method}`,
+        message: "LLM did not select a valid skill.",
         skillDecision
       };
     }
 
     // =========================
-    // 5. SAVE RESULT TO CACHE - 24 HOURS
-    // =========================
-    await db.collection("chat_cache").insertOne({
-      cacheKey,
-      user,
-      prompt,
-      skill: skillDecision.skill || selectedSkill,
-      method: skillDecision.method,
-      endpoint: skillDecision.endpoint,
-      payload: skillDecision.payload || null,
-      response: skillResult.data,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
-    });
-
-    // =========================
-    // 6. RETURN RESULT
+    // TEMP RETURN FOR STEP 1 TESTING
     // =========================
     return {
-      fromCache: false,
-      skill: skillDecision.skill || selectedSkill,
-      method: skillDecision.method,
-      endpoint: skillDecision.endpoint,
-      response: skillResult.data
+      success: true,
+      step: "skill_selection_complete",
+      skillsSource,
+      selectedSkill: skillDecision,
+      skillsFound: Array.isArray(skills) ? skills.length : "unknown",
+      skills
     };
   } catch (error) {
     console.error("CHAT ERROR:", error.message);

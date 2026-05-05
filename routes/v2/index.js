@@ -6,6 +6,7 @@ const connectMongo = require("../../mdb");
 
 // ✅ ADD CHAT ROUTES
 const chatRoutes = require("./chatRoutes");
+const { chat } = require("../../services/chat");
 router.use("/", chatRoutes);
 
 // =========================
@@ -61,7 +62,7 @@ router.post("/new_conversation", async (req, res) => {
 // =========================
 router.post("/new_message", async (req, res) => {
   try {
-    const { conversation, tool, text, attachment } = req.body;
+    const { conversation, skill, text, attachment, user } = req.body;
 
     if (!conversation || !text) {
       return res.status(400).json({ error: "conversation and text required" });
@@ -73,14 +74,14 @@ router.post("/new_message", async (req, res) => {
     const newMessage = {
       _id: crypto.randomUUID(),
       conversation,
-      tool: tool || null,
+      skill: skill || null,
       text,
       attachment: attachment || [],
       created_at: new Date()
     };
 
     await messages.insertOne(newMessage);
-
+    let response = await chat(newMessage.text, user, { skill: newMessage.skill } );
     await db.collection("v2_conversations").updateOne(
       { _id: conversation },
       {
@@ -93,7 +94,8 @@ router.post("/new_message", async (req, res) => {
 
     res.status(201).json({
       id: newMessage._id,
-      ...newMessage
+      ...newMessage,
+      llm_response: response
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -132,7 +134,7 @@ router.post("/messages", async (req, res) => {
       messages: rows.map((row) => ({
         id: row._id,
         conversation: row.conversation,
-        tool: row.tool,
+        skill: row.skill,
         text: row.text,
         attachment: row.attachment || [],
         created_at: row.created_at

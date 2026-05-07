@@ -8,6 +8,7 @@ const ROUTER_MODEL = process.env.ROUTER_MODEL || "qwen2.5:latest";
 // Receives skills from chat.js
 // =========================
 const selectSkill = async (prompt, user, skills = [], options = {}) => {
+  console.log("SELECTING SKILL FOR PROMPT:", prompt, user, skills);
   try {
     const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
       model: ROUTER_MODEL,
@@ -52,7 +53,7 @@ Return exactly this JSON shape:
     if (!parsed.skill) {
       throw new Error("LLM response missing skill");
     }
-
+    console.log("LLM SELECTED SKILL:", parsed);
     return {
       skill: parsed.skill
     };

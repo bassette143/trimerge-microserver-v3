@@ -4,6 +4,7 @@ const { selectSkill } = require("./llmSkillSelector");
 const connectMongo = require("../mdb");
 const { mockToolsData } = require("./toolsmockdata");
 const { selectStaffTool } = require("./llmstaffselector");
+const { tool_resolver } = require("./toolresolver");
 
 const API_BASE_URL =
   process.env.API_BASE_URL || "https://trimerge-iq.onrender.com";
@@ -149,9 +150,7 @@ const chat = async (prompt, user, options = {}) => {
     // =========================
     // STEP 7: SELECT RANDOM STAFF
     // =========================
-    const randomStaff = matchedStaff.length > 0 
-      ? matchedStaff[Math.floor(Math.random() * matchedStaff.length)]
-      : null;
+    const randomStaff = matchedStaff.find((staff) => staff._id === "69f506e2b4859eff3993f55e") || null;
     
     // =========================
     // STEP 8: RETURN RESPONSE
@@ -168,12 +167,21 @@ const chat = async (prompt, user, options = {}) => {
   recentChats: [] // Replace with actual recent chats if available  
 })
 console.log("TOOL SELECTION RESULT:", toolSelection);
+const toolArguments = await tool_resolver({
+  tool: toolSelection.tool,
+  prompt,
+  staff: randomStaff,
+  user,
+  memory: {}, // Replace with actual memory if available
+  recentChats: [] // Replace with actual recent chats if available
+});
+console.log("TOOL ARGUMENTS RESULT:", toolArguments);
 return {
   skill: matchedSkill,
   staff: randomStaff, 
   position: matchedPositions.find((position) => position._id === randomStaff?.position),
   toolSelection,
-  
+  toolArguments,
   skillsSource
 };
   } catch (error) {

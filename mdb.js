@@ -15,7 +15,7 @@ async function connectMongo() {
   });
 
   await client.connect();
-  database = client.db("TriMergeIQ");
+  database = client.db("TriMergeIQ-4");
 
   console.log("✅ Successfully connected to MongoDB!");
   return database;

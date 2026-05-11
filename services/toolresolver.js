@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { ObjectId } = require("mongodb");
 const connectMongo = require("../mdb");
+const { summarizeToolResult } = require("./responsellm");
 
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
@@ -18,13 +19,33 @@ const STAFF_REPLY_MODEL =
 // EXECUTE TOOL PLACEHOLDER
 // Replace this with your real tool runner
 // ===============================
-const executeTool = async ({ tool, arguments }) => {
-  return {
+const executeTool = async ({ tool, staff, user, arguments }) => {
+  let toolResult = {
     success: true,
     message: `Tool ${tool.name} executed successfully.`,
     tool: tool.name,
     arguments
   };
+ 
+
+const conversationalResponse = await summarizeToolResult({
+  tool,
+  toolResult,
+  arguments: arguments,
+  user,
+  staff,
+  memory: "", // Replace with actual memory if available
+  recentChats: [] // Replace with actual recent chats if available
+});
+
+return {
+  status: "completed",
+  tool: tool.name,
+  arguments: arguments,
+  result: toolResult,
+  response: conversationalResponse.response
+};
+  
 };
 
 // ===============================
@@ -313,7 +334,8 @@ Return exactly this JSON shape:
 
     const toolResult = await executeTool({
       tool,
-      arguments: parsed.arguments
+      arguments: parsed.arguments, user, staff
+      
     });
 
     return {
@@ -337,7 +359,7 @@ Return exactly this JSON shape:
 // HANDLE USER REPLY TO PENDING TOOL
 // ===============================
 const continue_pending_tool = async ({
-  pendingToolId,
+  pendingToolId, conversation,
   userReply,
   memory,
   recentChats
@@ -345,10 +367,13 @@ const continue_pending_tool = async ({
   try {
     const db = await connectMongo();
 
-    const pendingTool = await db.collection("pending_tools").findOne({
+    const pendingTool = await db.collection("pending_tools").findOne(pendingToolId?{
       _id: new ObjectId(pendingToolId)
-    });
-
+    }:{
+      conversation,
+      
+      });
+      console.log("PENDING TOOL FOUND:", pendingTool);
     if (!pendingTool) {
       return {
         error: true,
@@ -363,7 +388,7 @@ const continue_pending_tool = async ({
       missingArguments: pendingTool.missing_arguments,
       userReply
     });
-
+    console.log("RETRIEVED ARGUMENTS:", updated);
     const stillMissing = updated.missing_arguments || [];
 
     if (stillMissing.length > 0) {
@@ -402,8 +427,10 @@ const continue_pending_tool = async ({
 
     const toolResult = await executeTool({
       tool: pendingTool.tool,
-      arguments: updated.arguments
+      arguments: updated.arguments, user: pendingTool.user, staff: pendingTool.staff
     });
+    console.log("TOOL EXECUTION RESULT:", toolResult);
+    
 
     await db.collection("pending_tools").deleteOne({
       _id: new ObjectId(pendingToolId)

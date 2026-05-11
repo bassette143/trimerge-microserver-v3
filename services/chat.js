@@ -1,10 +1,12 @@
 const axios = require("axios");
 
+
+
 const { selectSkill } = require("./llmSkillSelector");
 const connectMongo = require("../mdb");
 const { mockToolsData } = require("./toolsmockdata");
 const { selectStaffTool } = require("./llmstaffselector");
-const { tool_resolver } = require("./toolresolver");
+const { tool_resolver, continue_pending_tool } = require("./toolresolver");
 
 const API_BASE_URL =
   process.env.API_BASE_URL || "https://trimerge-iq.onrender.com";
@@ -12,8 +14,18 @@ const API_BASE_URL =
 const SKILLS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const chat = async (prompt, user, options = {}) => {
+  console.log("CHAT CALLED WITH:", { prompt, user, options });
   try {
     const db = await connectMongo();
+    const messages = db.collection("v2_messages");
+    if (options.pending_tool) {
+      let response = await continue_pending_tool({
+        pendingToolId: options.pending_tool,
+        userReply: prompt,   
+      });
+      console.log("PENDING TOOL RESPONSE:", response);
+      return response;
+    }
     let skillDecision = options.skill;
 
     let skills = null;
@@ -32,10 +44,11 @@ const chat = async (prompt, user, options = {}) => {
         skills = cachedSkills.skills;
         skillsSource = "mongo_cache";
       } else {
+        console.log("Fetching skills from backend API...");
         const skillsResponse = await axios.get(`${API_BASE_URL}/skills`, {
           timeout: 30000
         });
-
+        console.log("Skills fetched from backend API:", skillsResponse.data);
         skills = skillsResponse.data;
         skillsSource = "backend_api";
 
@@ -172,18 +185,18 @@ const toolArguments = await tool_resolver({
   prompt,
   staff: randomStaff,
   user,
-  memory: {}, // Replace with actual memory if available
-  recentChats: [] // Replace with actual recent chats if available
+  conversation: options.conversation_id,
+  memory: {}, 
+// Replace with actual memory if available
+  recentChats: [], 
+   // Replace with actual recent chats if available
 });
 console.log("TOOL ARGUMENTS RESULT:", toolArguments);
-return {
-  skill: matchedSkill,
-  staff: randomStaff, 
-  position: matchedPositions.find((position) => position._id === randomStaff?.position),
-  toolSelection,
-  toolArguments,
-  skillsSource
-};
+let agentmessage = {
+        conversation: options.conversation_id, text: toolArguments.message || toolArguments.result.response, position:matchedPositions.find((position) => position._id === randomStaff?.position)?.name || "Unknown Position", staff: randomStaff?._id || "Unknown Staff", tool: toolSelection.tool, arguments: toolArguments.arguments, timestamp: new Date()}
+ 
+      await messages.insertOne(agentmessage);
+return agentmessage
   } catch (error) {
     console.error("CHAT ERROR:", error.message);
 

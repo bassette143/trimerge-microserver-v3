@@ -62,7 +62,7 @@ router.post("/new_conversation", async (req, res) => {
 // =========================
 router.post("/new_message", async (req, res) => {
   try {
-    const { conversation, skill, text, attachment, user } = req.body;
+    const { conversation, skill, text, attachment, user, pending_tool } = req.body;
 
     if (!conversation || !text) {
       return res.status(400).json({ error: "conversation and text required" });
@@ -81,7 +81,7 @@ router.post("/new_message", async (req, res) => {
     };
 
     await messages.insertOne(newMessage);
-    let response = await chat(newMessage.text, user, { skill: newMessage.skill } );
+    let response = await chat(newMessage.text, user, { skill: newMessage.skill, conversation, pending_tool });
     await db.collection("v2_conversations").updateOne(
       { _id: conversation },
       {

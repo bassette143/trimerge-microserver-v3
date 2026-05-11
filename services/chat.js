@@ -24,6 +24,10 @@ const chat = async (prompt, user, options = {}) => {
         userReply: prompt,   
       });
       console.log("PENDING TOOL RESPONSE:", response);
+      let agentmessage = {
+        conversation: options.conversation, text: response.message || response.result?.response, pending_tool:response.pendingToolId || null, tool: response.tool, arguments: response.arguments,  created_at: new Date()}
+ 
+      await messages.insertOne(agentmessage);
       return response;
     }
     let skillDecision = options.skill;
@@ -193,7 +197,7 @@ const toolArguments = await tool_resolver({
 });
 console.log("TOOL ARGUMENTS RESULT:", toolArguments);
 let agentmessage = {
-        conversation: options.conversation_id, text: toolArguments.message || toolArguments.result.response, position:matchedPositions.find((position) => position._id === randomStaff?.position)?.name || "Unknown Position", staff: randomStaff?._id || "Unknown Staff", tool: toolSelection.tool, arguments: toolArguments.arguments, timestamp: new Date()}
+        conversation: options.conversation, text: toolArguments.message || toolArguments.result?.response, pending_tool:toolArguments.pendingToolId || null, position:matchedPositions.find((position) => position._id === randomStaff?.position)?.name || "Unknown Position", staff: randomStaff?._id || "Unknown Staff", tool: toolSelection.tool, arguments: toolArguments.arguments,  created_at: new Date()}
  
       await messages.insertOne(agentmessage);
 return agentmessage

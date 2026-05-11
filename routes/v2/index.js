@@ -92,11 +92,7 @@ router.post("/new_message", async (req, res) => {
       }
     );
 
-    res.status(201).json({
-      id: newMessage._id,
-      ...newMessage,
-      llm_response: response
-    });
+    res.status(201).json(response);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

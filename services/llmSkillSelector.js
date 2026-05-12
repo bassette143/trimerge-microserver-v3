@@ -1,7 +1,7 @@
 const axios = require("axios");
+const { callAIJSON } = require("./aiservice");
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const ROUTER_MODEL = process.env.ROUTER_MODEL || "qwen2.5:latest";
+
 
 // =========================
 // MAIN SELECTOR
@@ -10,10 +10,8 @@ const ROUTER_MODEL = process.env.ROUTER_MODEL || "qwen2.5:latest";
 const selectSkill = async (prompt, user, skills = [], options = {}) => {
   console.log("SELECTING SKILL FOR PROMPT:", prompt, user, skills);
   try {
-    const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
-      model: ROUTER_MODEL,
-      stream: false,
-      prompt: `
+    const parsed = await callAIJSON({
+      instructions: `
 You are a strict skill selector.
 
 Return ONLY valid JSON.
@@ -38,17 +36,6 @@ Return exactly this JSON shape:
 }
 `
     });
-
-    const rawText = response.data.response.trim();
-
-    const jsonStart = rawText.indexOf("{");
-    const jsonEnd = rawText.lastIndexOf("}");
-
-    if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("LLM did not return JSON");
-    }
-
-    const parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
 
     if (!parsed.skill) {
       throw new Error("LLM response missing skill");

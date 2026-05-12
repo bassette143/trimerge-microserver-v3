@@ -28,7 +28,7 @@ const chat = async (prompt, user, options = {}) => {
         conversation: options.conversation, text: response.message || response.result?.response, pending_tool:response.pendingToolId || null, tool: response.tool, arguments: response.arguments,  created_at: new Date()}
  
       await messages.insertOne(agentmessage);
-      return response;
+      return agentmessage;
     }
     let skillDecision = options.skill;
 

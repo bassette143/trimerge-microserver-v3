@@ -1,11 +1,7 @@
 const axios = require("axios");
+const { callAIJSON } = require("./aiservice");
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
-const TOOL_RESPONSE_MODEL =
-  process.env.TOOL_RESPONSE_MODEL ||
-  process.env.ROUTER_MODEL ||
-  "qwen2.5:latest";
 
 // =======================================
 // CONVERSATIONAL TOOL RESPONSE GENERATOR
@@ -20,10 +16,8 @@ const summarizeToolResult = async ({
   recentChats
 }) => {
   try {
-    const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
-      model: TOOL_RESPONSE_MODEL,
-      stream: false,
-      prompt: `
+    const parsed = await callAIJSON({
+      instructions: `
 You are speaking as this staff member.
 
 Return ONLY valid JSON.
@@ -70,16 +64,7 @@ Return exactly this JSON shape:
 `
     });
 
-    const rawText = response.data.response.trim();
-
-    const jsonStart = rawText.indexOf("{");
-    const jsonEnd = rawText.lastIndexOf("}");
-
-    if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("LLM did not return JSON");
-    }
-
-    const parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
+   
 
     return parsed;
 

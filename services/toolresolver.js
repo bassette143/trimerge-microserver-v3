@@ -2,18 +2,9 @@ const axios = require("axios");
 const { ObjectId } = require("mongodb");
 const connectMongo = require("../mdb");
 const { summarizeToolResult } = require("./responsellm");
+const { callAIJSON, callAI } = require("./aiservice");
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
-const TOOL_RESOLVER_MODEL =
-  process.env.TOOL_RESOLVER_MODEL ||
-  process.env.ROUTER_MODEL ||
-  "qwen2.5:latest";
-
-const STAFF_REPLY_MODEL =
-  process.env.STAFF_REPLY_MODEL ||
-  process.env.ROUTER_MODEL ||
-  "qwen2.5:latest";
 
 // ===============================
 // EXECUTE TOOL PLACEHOLDER
@@ -91,10 +82,8 @@ const askForMissingArguments = async ({
   missingArguments,
   currentArguments
 }) => {
-  const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
-    model: STAFF_REPLY_MODEL,
-    stream: false,
-    prompt: `
+  const response = await callAI({
+    instructions: `
 You are speaking as this staff member.
 
 Return ONLY plain text.
@@ -138,7 +127,7 @@ Rules:
 `
   });
 
-  return response.data.response.trim();
+  return response;
 };
 
 // ===============================
@@ -151,10 +140,8 @@ const retrieveMissingArguments = async ({
   missingArguments,
   userReply
 }) => {
-  const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
-    model: TOOL_RESOLVER_MODEL,
-    stream: false,
-    prompt: `
+  const parsed = await callAIJSON({
+    instructions: `
 You are a strict missing argument retriever.
 
 Return ONLY valid JSON.
@@ -203,15 +190,7 @@ Return exactly this JSON shape:
 `
   });
 
-  const rawText = response.data.response.trim();
-  const jsonStart = rawText.indexOf("{");
-  const jsonEnd = rawText.lastIndexOf("}");
-
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("LLM did not return JSON");
-  }
-
-  return JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
+  return parsed;
 };
 
 // ===============================
@@ -230,10 +209,8 @@ const tool_resolver = async (payload) => {
   } = payload;
 
   try {
-    const response = await axios.post(`${OLLAMA_URL}/api/generate`, {
-      model: TOOL_RESOLVER_MODEL,
-      stream: false,
-      prompt: `
+    const parsed = await callAIJSON({
+      instructions: `
 You are a strict tool argument resolver.
 
 Return ONLY valid JSON.
@@ -288,15 +265,7 @@ Return exactly this JSON shape:
 `
     });
 
-    const rawText = response.data.response.trim();
-    const jsonStart = rawText.indexOf("{");
-    const jsonEnd = rawText.lastIndexOf("}");
-
-    if (jsonStart === -1 || jsonEnd === -1) {
-      throw new Error("LLM did not return JSON");
-    }
-
-    const parsed = JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
+   
     const missingArguments = parsed.missing_arguments || [];
 
     if (missingArguments.length > 0) {

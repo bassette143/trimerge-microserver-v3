@@ -71,10 +71,16 @@ const chat = async (prompt, user, options = {}) => {
       }
 
       skillDecision = await selectSkill(prompt, user, skills, options);
+      if (skillDecision.mode === "generic_response") {
+       let agentmessage = {
+        conversation: options.conversation, text: skillDecision.response || null, pending_tool:null, tool: null, arguments: null,  created_at: new Date()}
+        await messages.insertOne(agentmessage);
+        return agentmessage;
+      }
     } else {
       skillDecision = { skill: skillDecision };
     }
-
+    console.log("SKILL DECISION:", skillDecision, "SKILLS SOURCE:", skillsSource);
     // =========================
     // STEP 2: VALIDATE SELECTED SKILL
     // =========================
@@ -167,13 +173,16 @@ const chat = async (prompt, user, options = {}) => {
     // =========================
     // STEP 7: SELECT RANDOM STAFF
     // =========================
-    const randomStaff = matchedStaff.find((staff) => staff._id === "69f506e2b4859eff3993f55e") || null;
+    const randomStaff = matchedStaff[0];
     
     // =========================
     // STEP 8: RETURN RESPONSE
     // =========================
     
-   let tools = mockToolsData.tools.staff[randomStaff?._id]?.tool || [];
+   const toolsResponse = await axios.get(`${API_BASE_URL}/get_staff_tools/${randomStaff?._id}`, {
+      timeout: 30000
+    });
+   let tools = toolsResponse.data || [];
    let toolSelection = await selectStaffTool({
   prompt,
   user,

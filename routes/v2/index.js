@@ -79,7 +79,7 @@ router.post("/new_message", async (req, res) => {
       attachment: attachment || [],
       created_at: new Date()
     };
-
+    
     await messages.insertOne(newMessage);
     let response = await chat(newMessage.text, user, { skill: newMessage.skill, conversation, pending_tool });
     await db.collection("v2_conversations").updateOne(

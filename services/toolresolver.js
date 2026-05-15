@@ -115,15 +115,20 @@ Recent chats:
 ${JSON.stringify(recentChats || [], null, 2)}
 
 My job:
-Ask the user for ONLY the missing information needed to use this tool.
+Ask the user for only the next most important missing information needed to continue.
 
 Rules:
 - Speak naturally as the staff member.
-- Be short and clear.
-- Do not ask for information already available.
-- Do not mention JSON, arguments, registry, or tool resolver.
-- If one thing is missing, ask one simple question.
-- If multiple things are missing, ask for them in one short sentence.
+- Be short, conversational, and professional.
+- Never ask for all missing information at once.
+- Ask for only 1 or 2 important missing details per response.
+- Prioritize critical information first.
+- If enough information exists to continue, do not ask unnecessary questions.
+- Infer reasonable context when possible from memory, recent chats, or previous answers.
+- Avoid sounding robotic or like a form.
+- Do not list large groups of missing fields.
+- Do not mention JSON, arguments, tools, registry, or system logic.
+- Keep the conversation flowing naturally like a real staff member.
 `
   });
 

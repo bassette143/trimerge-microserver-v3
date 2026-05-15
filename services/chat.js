@@ -21,11 +21,12 @@ const chat = async (prompt, user, options = {}) => {
     if (options.pending_tool) {
       let response = await continue_pending_tool({
         pendingToolId: options.pending_tool,
-        userReply: prompt,   
+        userReply: prompt,  
+        recentChats: await getrecentmessages(options.conversation_id)  
       });
       console.log("PENDING TOOL RESPONSE:", response);
       let agentmessage = {
-        conversation: options.conversation, text: response.message || response.result?.response, pending_tool:response.pendingToolId || null, tool: response.tool, arguments: response.arguments,  created_at: new Date()}
+        conversation: options.conversation,agent:true, text: response.message || response.result?.response, pending_tool:response.pendingToolId || null, tool: response.tool, arguments: response.arguments,  created_at: new Date()}
  
       await messages.insertOne(agentmessage);
       return agentmessage;
@@ -73,7 +74,7 @@ const chat = async (prompt, user, options = {}) => {
       skillDecision = await selectSkill(prompt, user, skills, options);
       if (skillDecision.mode === "generic_response") {
        let agentmessage = {
-        conversation: options.conversation, text: skillDecision.response || null, pending_tool:null, tool: null, arguments: null,  created_at: new Date()}
+        conversation: options.conversation, agent:true, text: skillDecision.response || null, pending_tool:null, tool: null, arguments: null,  created_at: new Date()}
         await messages.insertOne(agentmessage);
         return agentmessage;
       }
@@ -193,6 +194,9 @@ const chat = async (prompt, user, options = {}) => {
   recentChats: [] // Replace with actual recent chats if available  
 })
 console.log("TOOL SELECTION RESULT:", toolSelection);
+
+
+
 const toolArguments = await tool_resolver({
   tool: toolSelection.tool,
   prompt,
@@ -201,12 +205,12 @@ const toolArguments = await tool_resolver({
   conversation: options.conversation_id,
   memory: {}, 
 // Replace with actual memory if available
-  recentChats: [], 
+  recentChats: await getrecentmessages(options.conversation_id)  
    // Replace with actual recent chats if available
 });
 console.log("TOOL ARGUMENTS RESULT:", toolArguments);
 let agentmessage = {
-        conversation: options.conversation, text: toolArguments.message || toolArguments.result?.response, pending_tool:toolArguments.pendingToolId || null, position:matchedPositions.find((position) => position._id === randomStaff?.position)?.name || "Unknown Position", staff: randomStaff?._id || "Unknown Staff", tool: toolSelection.tool, arguments: toolArguments.arguments,  created_at: new Date()}
+        conversation: options.conversation, agent:true, text: toolArguments.message || toolArguments.result?.response, pending_tool:toolArguments.pendingToolId || null, position:matchedPositions.find((position) => position._id === randomStaff?.position)?.name || "Unknown Position", staff: randomStaff?._id || "Unknown Staff", tool: toolSelection.tool, arguments: toolArguments.arguments,  created_at: new Date()}
  
       await messages.insertOne(agentmessage);
 return agentmessage
@@ -220,5 +224,26 @@ return agentmessage
     };
   }
 };
+const getrecentmessages = async (conversationId) => {
+  try {
+    const db = await connectMongo();
+    const messages = db.collection("v2_messages");
+    const recentMessages = await messages.find({ conversation: conversationId })
+      .sort({ created_at: -1 })
+      .limit(10)
+      .toArray();
 
-module.exports = { chat };
+ 
+
+const formattedMessages = recentMessages.reverse().map(msg => ({
+  role: msg.agent ? "assistant" : "user",
+  content: msg.text
+}));
+return formattedMessages;
+  } catch (error) {
+    console.error("GET RECENT MESSAGES ERROR:", error.message);
+    return [];
+  }
+};
+
+module.exports = { chat, getrecentmessages };

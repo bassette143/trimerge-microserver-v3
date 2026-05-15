@@ -26,7 +26,7 @@ const conversationalResponse = await summarizeToolResult({
   user,
   staff,
   memory: "", // Replace with actual memory if available
-  recentChats: [] // Replace with actual recent chats if available
+  recentChats: recentChats // Replace with actual recent chats if available
 });
 
 return {
@@ -83,6 +83,7 @@ const askForMissingArguments = async ({
   currentArguments
 }) => {
   const response = await callAI({
+    recentChats: recentChats,
     instructions: `
 You are speaking as this staff member.
 
@@ -111,8 +112,7 @@ ${JSON.stringify(missingArguments || [], null, 2)}
 Memory:
 ${JSON.stringify(memory || {}, null, 2)}
 
-Recent chats:
-${JSON.stringify(recentChats || [], null, 2)}
+
 
 My job:
 Ask the user for only the next most important missing information needed to continue.
@@ -215,6 +215,7 @@ const tool_resolver = async (payload) => {
 
   try {
     const parsed = await callAIJSON({
+      recentChats: recentChats,
       instructions: `
 You are a strict tool argument resolver.
 
@@ -308,8 +309,8 @@ Return exactly this JSON shape:
 
     const toolResult = await executeTool({
       tool,
-      arguments: parsed.arguments, user, staff
-      
+      arguments: parsed.arguments, user, staff,
+      recentChats
     });
 
     return {
@@ -401,7 +402,7 @@ const continue_pending_tool = async ({
 
     const toolResult = await executeTool({
       tool: pendingTool.tool,
-      arguments: updated.arguments, user: pendingTool.user, staff: pendingTool.staff
+      arguments: updated.arguments, user: pendingTool.user, staff: pendingTool.staff,
     });
     console.log("TOOL EXECUTION RESULT:", toolResult);
     
